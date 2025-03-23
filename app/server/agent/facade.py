@@ -9,9 +9,10 @@ from app.server.agent.tools.search.reddit import redditSearcher
 class ToolsFacade:
     def __init__(self):
         self.search_tools = [
-            # redditSearcher,
+            redditSearcher,
             googleSearcher,
-            # ArxivSearch.search
+            ArxivSearch.search,
+            GithubSearch.search_and_enrich,
         ]
         self.code_tools = [
             executePython,

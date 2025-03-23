@@ -1,94 +1,177 @@
-import dspy
-from app.server.agent.signatures import ExtractIntent, ExtractQAType, BasicQA, DetailedQA, CommandExec, AskClarification
+import json
+from langchain import LLMChain, PromptTemplate
+from langchain.llms import OpenAI
 
 
 class ReactAgent:
-    def __init__(self, tools_facade, intent_conf_threshold=0.8, qa_conf_threshold=0.8):
+    def __init__(self, tools_facade, intent_conf_threshold=0.8, qa_conf_threshold=0.8, llm=None):
         self.tools_facade = tools_facade
         self.intent_conf_threshold = intent_conf_threshold
         self.qa_conf_threshold = qa_conf_threshold
+        self.llm = llm or OpenAI(temperature=0)
 
-        self.intent_extractor = dspy.ChainOfThought(ExtractIntent)
-        self.qa_type_extractor = dspy.ChainOfThought(ExtractQAType)
-        self.react_qa = dspy.ReAct(BasicQA, tools=self.tools_facade.search_tools)
-        self.react_detailed = dspy.ReAct(DetailedQA, tools=self.tools_facade.available_tools)
-        self.react_command = dspy.ReAct(CommandExec, tools=self.tools_facade.code_tools)
-        self.clarification_agent = dspy.ChainOfThought(AskClarification)
+        # --- Chain for extracting intent ---
+        self.intent_template = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "You are a friendly assistant. Analyze the input below and extract the intent.\n"
+                "Return a JSON object with two keys: 'intent' (either 'command' or 'qa') and 'confidence' (a float between 0 and 1).\n"
+                "Input: {text}"
+            )
+        )
+        self.intent_chain = LLMChain(llm=self.llm, prompt=self.intent_template)
+
+        # --- Chain for determining QA type ---
+        self.qa_type_template = PromptTemplate(
+            input_variables=["question"],
+            template=(
+                "Determine whether the following question expects a short answer or a detailed explanation. \n"
+                "Return a JSON object with keys: 'qa_type' (either 'short' or 'detailed') and 'confidence' (a float between 0 and 1).\n"
+                "Question: {question}"
+            )
+        )
+        self.qa_type_chain = LLMChain(llm=self.llm, prompt=self.qa_type_template)
+
+        # --- Chain for planning (clarification check) ---
+        self.planner_template = PromptTemplate(
+            input_variables=["question"],
+            template=(
+                "Analyze the following input and decide if any clarification is needed before executing the request. \n"
+                "Return a JSON object with keys: 'needs_clarification' (true/false) and 'clarification_message'. \n"
+                "Input: {question}"
+            )
+        )
+        self.planner_chain = LLMChain(llm=self.llm, prompt=self.planner_template)
+
+        # --- Chain for generating clarification message ---
+        self.clarification_template = PromptTemplate(
+            input_variables=["question"],
+            template=(
+                "The input appears ambiguous. Please ask for additional details in a friendly manner.\n"
+                "Input: {question}"
+            )
+        )
+        self.clarification_chain = LLMChain(llm=self.llm, prompt=self.clarification_template)
+
+        # --- Chain for short QA answers ---
+        self.basic_qa_template = PromptTemplate(
+            input_variables=["question"],
+            template=(
+                "Answer the following question in a friendly tone with a concise answer (1-5 words):\n"
+                "Question: {question}"
+            )
+        )
+        self.basic_qa_chain = LLMChain(llm=self.llm, prompt=self.basic_qa_template)
+
+        # --- Chain for detailed QA answers ---
+        self.detailed_qa_template = PromptTemplate(
+            input_variables=["question"],
+            template=(
+                "Provide a detailed explanation in a warm and conversational tone for the following question:\n"
+                "Question: {question}"
+            )
+        )
+        self.detailed_qa_chain = LLMChain(llm=self.llm, prompt=self.detailed_qa_template)
+
+        # --- Chain for command execution ---
+        self.command_exec_template = PromptTemplate(
+            input_variables=["command"],
+            template=(
+                "Execute the following command and return the result in a clear and engaging manner:\n"
+                "Command: {command}"
+            )
+        )
+        self.command_exec_chain = LLMChain(llm=self.llm, prompt=self.command_exec_template)
+
+        # --- Chain for self-critical feedback ---
+        self.self_critic_template = PromptTemplate(
+            input_variables=["answer_content"],
+            template=(
+                "Provide self-critical feedback for the following answer. If there is no feedback to provide, respond with 'No feedback provided'.\n"
+                "Answer: {answer_content}"
+            )
+        )
+        self.self_critic_chain = LLMChain(llm=self.llm, prompt=self.self_critic_template)
 
     def extract_intent(self, user_input: str) -> dict:
-        """
-        Extract the intent from the user input.
-        Expected result should have both an 'intent' attribute and a 'confidence' score.
-        If confidence is not provided, defaults to 1.0.
-        """
-        result = self.intent_extractor(text=user_input)
-        print(f"extract_intent result: {result}")
-        intent = getattr(result, 'intent', None)
-        confidence = getattr(result, 'confidence', 1.0)
+        result = self.intent_chain.run(text=user_input)
+        try:
+            data = json.loads(result)
+            intent = data.get("intent")
+            confidence = float(data.get("confidence", 1.0))
+        except Exception as e:
+            intent, confidence = None, 0.0
+        print(f"extract_intent result: {data if 'data' in locals() else result}")
         return {"intent": intent, "confidence": confidence}
 
     def extract_qa_type(self, question: str) -> dict:
-        """
-        Determine the QA type (e.g., 'short' or 'detailed') from the question.
-        Expected result should include 'qa_type' and a 'confidence' score.
-        Defaults to 1.0 if not provided.
-        """
-        result = self.qa_type_extractor(question=question)
-        print(f"extract_qa_type result: {result}")
-        qa_type = getattr(result, 'qa_type', None)
-        confidence = getattr(result, 'confidence', 1.0)
+        result = self.qa_type_chain.run(question=question)
+        try:
+            data = json.loads(result)
+            qa_type = data.get("qa_type")
+            confidence = float(data.get("confidence", 1.0))
+        except Exception as e:
+            qa_type, confidence = None, 0.0
+        print(f"extract_qa_type result: {data if 'data' in locals() else result}")
         return {"qa_type": qa_type, "confidence": confidence}
 
     def ask_qa_clarification(self, text: str) -> dict:
-        """
-        Use the LLM clarification agent to ask for more details when the QA type is ambiguous.
-        """
-        result = self.clarification_agent(question=text)
-        print(f"ask_qa_clarification {result}")
-        return {"final": False, "response": result.message}
+        result = self.clarification_chain.run(question=text)
+        print(f"ask_qa_clarification result: {result}")
+        return {"final": False, "response": result}
 
     def process(self, conversation_history: list, current_message: str) -> dict:
-        """
-        Process the user input by:
-          1. Extracting intent. If the confidence is below the threshold, ask for clarification.
-          2. For 'qa' intent, extracting the QA type. Again, if confidence is low, ask for clarification.
-          3. Routing to the appropriate module based on the (possibly clarified) intent and QA type.
-          4. Emitting intermediate clarification responses and a final response with a final flag.
-        Returns a dictionary containing the final response.
-        """
-        full_input = "\n".join(
-            f"{msg['r   ole']}: {msg['content']}"
-            for msg in conversation_history
-        )
+        # Build the conversation context
+        full_input = "\n".join(f"{msg['role']}: {msg['content']}" for msg in conversation_history)
         full_input += f"\nuser: {current_message}"
+
+        # --- Planning Turn ---
+        plan_result = self.planner_chain.run(question=full_input)
+        try:
+            plan_data = json.loads(plan_result)
+            needs_clarification = plan_data.get("needs_clarification", False)
+            clarification_message = plan_data.get("clarification_message", "")
+        except Exception as e:
+            needs_clarification, clarification_message = False, ""
+        print(f"plan_result: {plan_data if 'plan_data' in locals() else plan_result}")
+
+        if needs_clarification:
+            return {"final": False, "response": clarification_message or "Could you please provide more details?"}
+
+        # --- Intent Extraction ---
         intent_result = self.extract_intent(full_input)
         if intent_result["confidence"] < self.intent_conf_threshold:
-            clar_message = "I'm not sure I understood your intent. Could you please clarify your request?"
-            return {"final": False, "response": clar_message}
+            return {"final": False,
+                    "response": "I'm not sure I understood your intent. Could you please clarify your request?"}
 
         intent = intent_result["intent"]
 
+        # --- Processing Based on Intent ---
         if intent == "qa":
             qa_result = self.extract_qa_type(full_input)
             if qa_result["confidence"] < self.qa_conf_threshold:
-                clar_message = "I'm not sure if you want a short or detailed answer. Could you please specify?"
-                return {"final": False, "response": clar_message}
+                return {"final": False,
+                        "response": "I'm not sure if you want a short or detailed answer. Could you please specify?"}
             qa_type = qa_result["qa_type"]
 
             if qa_type == "short":
-                result = self.react_qa(question=full_input)
-                print(f"react_qa {result}")
-                final_answer = f"Short QA Answer: {result.answer}"
-            elif qa_type == 'detailed':
-                result = self.react_detailed(question=full_input)
-                print(f"react_detailed {result}")
-                final_answer = f"Detailed QA Answer: {result.answer}"
+                answer_content = self.basic_qa_chain.run(question=full_input)
+                answer_prefix = "Short QA Answer"
+            elif qa_type == "detailed":
+                answer_content = self.detailed_qa_chain.run(question=full_input)
+                answer_prefix = "Detailed QA Answer"
             else:
                 return self.ask_qa_clarification(full_input)
-
         else:
-            result = self.react_command(command=full_input)
-            print(f"react_command {result}")
-            final_answer = f"Command Execution Result: {result.result}"
+            answer_content = self.command_exec_chain.run(command=full_input)
+            answer_prefix = "Command Execution Result"
 
+        # --- Self-Critic Turn ---
+        critic_feedback = self.self_critic_chain.run(answer_content=answer_content)
+        print(f"self_critic result: {critic_feedback}")
+        final_answer = (
+            f"{answer_prefix}: {answer_content} | Self Critique: {critic_feedback}"
+        )
         return {"final": True, "response": final_answer}
+
+
