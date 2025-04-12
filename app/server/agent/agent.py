@@ -1,177 +1,193 @@
-import json
-from langchain import LLMChain, PromptTemplate
-from langchain.llms import OpenAI
+from typing import Annotated
+from typing_extensions import TypedDict
+
+from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langgraph.graph import StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
+
+from app.server.agent.facade import ToolsFacade
+from app.server.agent.llm_client import LLMClient
 
 
-class ReactAgent:
-    def __init__(self, tools_facade, intent_conf_threshold=0.8, qa_conf_threshold=0.8, llm=None):
-        self.tools_facade = tools_facade
-        self.intent_conf_threshold = intent_conf_threshold
-        self.qa_conf_threshold = qa_conf_threshold
-        self.llm = llm or OpenAI(temperature=0)
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-        # --- Chain for extracting intent ---
-        self.intent_template = PromptTemplate(
-            input_variables=["text"],
-            template=(
-                "You are a friendly assistant. Analyze the input below and extract the intent.\n"
-                "Return a JSON object with two keys: 'intent' (either 'command' or 'qa') and 'confidence' (a float between 0 and 1).\n"
-                "Input: {text}"
-            )
-        )
-        self.intent_chain = LLMChain(llm=self.llm, prompt=self.intent_template)
 
-        # --- Chain for determining QA type ---
-        self.qa_type_template = PromptTemplate(
-            input_variables=["question"],
-            template=(
-                "Determine whether the following question expects a short answer or a detailed explanation. \n"
-                "Return a JSON object with keys: 'qa_type' (either 'short' or 'detailed') and 'confidence' (a float between 0 and 1).\n"
-                "Question: {question}"
-            )
-        )
-        self.qa_type_chain = LLMChain(llm=self.llm, prompt=self.qa_type_template)
+def build_langgraph(llm_client: LLMClient, facade: ToolsFacade):
+    """
+    Build a LangGraph that:
+      - Has a chatbot node calling llm_client.chat_with_tools
+      - Has 2 ToolNodes: one for 'search' tools, one for 'code' tools
+      - Routes to the correct node depending on LLM usage
+      - Has a 'human_approval_node' to break out of loops / get clarification
+    """
+    graph_builder = StateGraph(State)
 
-        # --- Chain for planning (clarification check) ---
-        self.planner_template = PromptTemplate(
-            input_variables=["question"],
-            template=(
-                "Analyze the following input and decide if any clarification is needed before executing the request. \n"
-                "Return a JSON object with keys: 'needs_clarification' (true/false) and 'clarification_message'. \n"
-                "Input: {question}"
-            )
-        )
-        self.planner_chain = LLMChain(llm=self.llm, prompt=self.planner_template)
+    ###########################################################################
+    # 1. Chatbot node (unchanged)
+    ###########################################################################
 
-        # --- Chain for generating clarification message ---
-        self.clarification_template = PromptTemplate(
-            input_variables=["question"],
-            template=(
-                "The input appears ambiguous. Please ask for additional details in a friendly manner.\n"
-                "Input: {question}"
-            )
-        )
-        self.clarification_chain = LLMChain(llm=self.llm, prompt=self.clarification_template)
+    def chatbot_node(state: State) -> dict:
+        """
+        Node that calls your LLM with the entire set of Tools.
+        We transform each message in state['messages'] into a dict or string
+        as required by llm_client.chat_with_tools(...).
+        """
+        print("\n[chatbot_node] Entering chatbot_node...")
+        print(f"[chatbot_node] Current state messages: {state['messages']}")
 
-        # --- Chain for short QA answers ---
-        self.basic_qa_template = PromptTemplate(
-            input_variables=["question"],
-            template=(
-                "Answer the following question in a friendly tone with a concise answer (1-5 words):\n"
-                "Question: {question}"
-            )
-        )
-        self.basic_qa_chain = LLMChain(llm=self.llm, prompt=self.basic_qa_template)
-
-        # --- Chain for detailed QA answers ---
-        self.detailed_qa_template = PromptTemplate(
-            input_variables=["question"],
-            template=(
-                "Provide a detailed explanation in a warm and conversational tone for the following question:\n"
-                "Question: {question}"
-            )
-        )
-        self.detailed_qa_chain = LLMChain(llm=self.llm, prompt=self.detailed_qa_template)
-
-        # --- Chain for command execution ---
-        self.command_exec_template = PromptTemplate(
-            input_variables=["command"],
-            template=(
-                "Execute the following command and return the result in a clear and engaging manner:\n"
-                "Command: {command}"
-            )
-        )
-        self.command_exec_chain = LLMChain(llm=self.llm, prompt=self.command_exec_template)
-
-        # --- Chain for self-critical feedback ---
-        self.self_critic_template = PromptTemplate(
-            input_variables=["answer_content"],
-            template=(
-                "Provide self-critical feedback for the following answer. If there is no feedback to provide, respond with 'No feedback provided'.\n"
-                "Answer: {answer_content}"
-            )
-        )
-        self.self_critic_chain = LLMChain(llm=self.llm, prompt=self.self_critic_template)
-
-    def extract_intent(self, user_input: str) -> dict:
-        result = self.intent_chain.run(text=user_input)
-        try:
-            data = json.loads(result)
-            intent = data.get("intent")
-            confidence = float(data.get("confidence", 1.0))
-        except Exception as e:
-            intent, confidence = None, 0.0
-        print(f"extract_intent result: {data if 'data' in locals() else result}")
-        return {"intent": intent, "confidence": confidence}
-
-    def extract_qa_type(self, question: str) -> dict:
-        result = self.qa_type_chain.run(question=question)
-        try:
-            data = json.loads(result)
-            qa_type = data.get("qa_type")
-            confidence = float(data.get("confidence", 1.0))
-        except Exception as e:
-            qa_type, confidence = None, 0.0
-        print(f"extract_qa_type result: {data if 'data' in locals() else result}")
-        return {"qa_type": qa_type, "confidence": confidence}
-
-    def ask_qa_clarification(self, text: str) -> dict:
-        result = self.clarification_chain.run(question=text)
-        print(f"ask_qa_clarification result: {result}")
-        return {"final": False, "response": result}
-
-    def process(self, conversation_history: list, current_message: str) -> dict:
-        # Build the conversation context
-        full_input = "\n".join(f"{msg['role']}: {msg['content']}" for msg in conversation_history)
-        full_input += f"\nuser: {current_message}"
-
-        # --- Planning Turn ---
-        plan_result = self.planner_chain.run(question=full_input)
-        try:
-            plan_data = json.loads(plan_result)
-            needs_clarification = plan_data.get("needs_clarification", False)
-            clarification_message = plan_data.get("clarification_message", "")
-        except Exception as e:
-            needs_clarification, clarification_message = False, ""
-        print(f"plan_result: {plan_data if 'plan_data' in locals() else plan_result}")
-
-        if needs_clarification:
-            return {"final": False, "response": clarification_message or "Could you please provide more details?"}
-
-        # --- Intent Extraction ---
-        intent_result = self.extract_intent(full_input)
-        if intent_result["confidence"] < self.intent_conf_threshold:
-            return {"final": False,
-                    "response": "I'm not sure I understood your intent. Could you please clarify your request?"}
-
-        intent = intent_result["intent"]
-
-        # --- Processing Based on Intent ---
-        if intent == "qa":
-            qa_result = self.extract_qa_type(full_input)
-            if qa_result["confidence"] < self.qa_conf_threshold:
-                return {"final": False,
-                        "response": "I'm not sure if you want a short or detailed answer. Could you please specify?"}
-            qa_type = qa_result["qa_type"]
-
-            if qa_type == "short":
-                answer_content = self.basic_qa_chain.run(question=full_input)
-                answer_prefix = "Short QA Answer"
-            elif qa_type == "detailed":
-                answer_content = self.detailed_qa_chain.run(question=full_input)
-                answer_prefix = "Detailed QA Answer"
+        chat_msgs = []
+        for msg in state["messages"]:
+            if isinstance(msg, HumanMessage):
+                chat_msgs.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                chat_msgs.append({"role": "assistant", "content": msg.content})
+            elif isinstance(msg, SystemMessage):
+                chat_msgs.append({"role": "system", "content": msg.content})
             else:
-                return self.ask_qa_clarification(full_input)
-        else:
-            answer_content = self.command_exec_chain.run(command=full_input)
-            answer_prefix = "Command Execution Result"
+                # If you're using a custom message class, adapt accordingly
+                chat_msgs.append({"role": "user", "content": str(msg)})
 
-        # --- Self-Critic Turn ---
-        critic_feedback = self.self_critic_chain.run(answer_content=answer_content)
-        print(f"self_critic result: {critic_feedback}")
-        final_answer = (
-            f"{answer_prefix}: {answer_content} | Self Critique: {critic_feedback}"
-        )
-        return {"final": True, "response": final_answer}
+        result = llm_client.chat_with_tools(messages=chat_msgs, tools=facade.tools)
 
+        # Log the content returned by your LLM
+        print(f"[chatbot_node] LLM returned: {result['content']}")
 
+        # Return a new AIMessage
+        new_state = {
+            "messages": [AIMessage(content=result["content"])]
+        }
+        print(f"[chatbot_node] Exiting chatbot_node, new state: {new_state}")
+        return new_state
+
+    ###########################################################################
+    # 2. "Human approval" node for manual intervention
+    ###########################################################################
+
+    def human_approval_node_fn(state: State) -> dict:
+        """
+        A node that indicates we need a human to review the conversation
+        and provide clarifications if the system is stuck in a loop or ambiguous.
+        """
+        print("\n[human_approval_node] Entering human_approval_node...")
+
+        # In a real system, you might store state in a DB, send an email/Slack alert, etc.
+        # For now, we just provide a placeholder AIMessage:
+        return {
+            "messages": [
+                AIMessage(content=(
+                    "I'm stuck or need clarification. "
+                    "Please provide more context or restate your request."
+                ))
+            ]
+        }
+
+    ###########################################################################
+    # 3. Search / Code tool nodes (unchanged placeholders)
+    ###########################################################################
+
+    def search_node_fn(state: State) -> dict:
+        print("\n[search_node] Entering search_node...")
+        return {
+            "messages": [AIMessage(content="Search tool result placeholder")]
+        }
+
+    def code_node_fn(state: State) -> dict:
+        print("\n[code_node] Entering code_node...")
+        return {
+            "messages": [AIMessage(content="Code tool result placeholder")]
+        }
+
+    # Create optional tool-wrappers (if you need them)
+    search_node = ToolNode(tools=facade.search_tools)
+    code_node = ToolNode(tools=facade.code_tools)
+
+    ###########################################################################
+    # 4. Add all nodes to the graph
+    ###########################################################################
+
+    graph_builder.add_node("chatbot", chatbot_node)
+    graph_builder.add_node("search_node", search_node)
+    graph_builder.add_node("code_node", code_node)
+    graph_builder.add_node("human_approval_node", human_approval_node_fn)
+
+    ###########################################################################
+    # 5. The routing logic
+    ###########################################################################
+
+    def choose_next_node(state: State) -> str:
+        """
+        Examines the last message's content to see whether it refers to a search or code tool,
+        or if it is empty/ambiguous and needs human approval.
+        """
+        print("\n[choose_next_node] Deciding next node...")
+        if not state["messages"]:
+            print("[choose_next_node] No messages, defaulting to 'chatbot'")
+            return "chatbot"
+
+        last_msg = state["messages"][-1]
+        last_content = last_msg.content.strip() if last_msg.content else ""
+        print(f"[choose_next_node] Last message: {last_content}")
+
+        # Detect empty or obviously stuck content
+        if not last_content:
+            print("[choose_next_node] Empty LLM response or no content. Going to 'human_approval_node'.")
+            return "human_approval_node"
+
+        # Example: If LLM is repeatedly requesting more context or is stuck
+        if "not sufficient" in last_content.lower() or "please provide more context" in last_content.lower():
+            print("[choose_next_node] LLM repeated confusion. Going to 'human_approval_node'.")
+            return "human_approval_node"
+
+        # Check for search triggers
+        if any(keyword in last_content
+               for keyword in ["redditSearcher", "googleSearcher", "arxivSearch", "githubSearchEnrich"]):
+            print("[choose_next_node] Found a search keyword, going to 'search_node'")
+            return "search_node"
+
+        # Check for code triggers
+        if "executePython" in last_content:
+            print("[choose_next_node] Found a code command, going to 'code_node'")
+            return "code_node"
+
+        # Otherwise, stay in chatbot
+        print("[choose_next_node] No special tool command, staying in 'chatbot'")
+        return "chatbot"
+
+    # From chatbot, choose next node based on last message
+    graph_builder.add_conditional_edges(
+        source="chatbot",
+        path=choose_next_node
+    )
+
+    ###########################################################################
+    # 6. Add edges for the rest of the flow
+    ###########################################################################
+
+    # Once we do 'search_node' or 'code_node', return to chatbot
+    graph_builder.add_edge("search_node", "chatbot")
+    graph_builder.add_edge("code_node", "chatbot")
+
+    # If we go to 'human_approval_node', after a human clarifies (i.e. new HumanMessage),
+    # we can return to chatbot again.
+    graph_builder.add_edge("human_approval_node", "chatbot")
+
+    # Also allow chatbot to remain in chatbot on subsequent runs
+    graph_builder.add_edge("chatbot", "chatbot")
+
+    # Entry point is 'chatbot'
+    graph_builder.set_entry_point("chatbot")
+
+    ###########################################################################
+    # 7. Compile the graph with memory-based checkpoints
+    ###########################################################################
+
+    memory = MemorySaver()
+    graph = graph_builder.compile(
+        checkpointer=memory,
+        # We'll interrupt before using tools, same as your original code
+        interrupt_before=["search_node", "code_node", "human_approval_node"]
+    )
+    return graph
