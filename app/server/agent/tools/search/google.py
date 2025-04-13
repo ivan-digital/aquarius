@@ -1,4 +1,5 @@
 import requests
+from pydantic import BaseModel
 
 from app.config_manager import configManager
 from app.server.web_driver import webDriverService
@@ -79,8 +80,12 @@ class GoogleSearch:
 googleSearcherService = GoogleSearch(configManager=configManager, webDriver=webDriverService)
 
 
-def googleSearcher(query):
+class GoogleSearchInput(BaseModel):
+    query: str
+
+
+def googleSearcher(input_data: GoogleSearchInput) -> str:
     """
-    Performs a search using the Google Search JSON API.
+    Using structured input with a 'query' field.
     """
-    return googleSearcherService.search(query)
+    return googleSearcherService.search(input_data.query)

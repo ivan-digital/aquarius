@@ -37,7 +37,7 @@ class ToolsFacade:
                 "name": "googleSearcher",
                 "category": "search",
                 "fn": googleSearcher,
-                "description": "Performs a Google search for the given query (via the Google Custom Search API)."
+                "description": "Performs a Google search using a query. Provide the query as a JSON object with a single field 'query'. "
             },
             {
                 "name": "arxivSearch",

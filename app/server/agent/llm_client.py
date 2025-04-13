@@ -75,18 +75,15 @@ class LLMClient:
 
         ollama_tools = []
         for structured_tool in tools:
-            # Instead of importing `Function` from ollama, build the "function" as a dictionary:
+            schema_dict = structured_tool.args_schema.schema()
+
             tool_dict = {
                 "name": structured_tool.name,
                 "description": structured_tool.description,
                 "function": {
                     "name": structured_tool.name,
                     "description": structured_tool.description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},  # or fill in the argument schema if needed
-                        "required": []
-                    }
+                    "parameters": schema_dict
                 }
             }
             ollama_tools.append(tool_dict)
