@@ -3,7 +3,7 @@ import unittest
 import time
 
 from app.config_manager import ConfigManager
-from app.server.agent.tools.search.facade import SearchFacade
+from app.agent.tools import SearchFacade
 
 
 class TestSearchService(unittest.TestCase):

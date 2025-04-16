@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 import json
 
-from app.server.agent.llm_client import LLMClient
+from app.agent import LLMClient
 
 
 class DummyFunction:

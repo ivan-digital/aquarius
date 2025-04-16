@@ -1,4 +1,4 @@
-from app.server.agent.tools.code.python import PythonCodeExecutor
+from app.agent.tools.code import PythonCodeExecutor
 
 
 class CodeExecutionFacade:
