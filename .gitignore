@@ -1,0 +1,5 @@
+/app/server/uploaded_files/
+/app/server/work_dir/
+config.yaml
+/.venv
+/.idea
