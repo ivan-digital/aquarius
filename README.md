@@ -25,6 +25,7 @@ Aquarius is an intelligent code assistant that combines a chat interface with lo
 
 - **Flask API & Gradio UI**  
   Enables chat via a RESTful `/chat` endpoint and an interactive Gradio interface.
+  In this repo I include [LLM inference docker container](inference/README.md) with vLLM, prometheus and grafana.
 
 ---
 
