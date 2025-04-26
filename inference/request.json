@@ -1,4 +1,5 @@
 {
-    "prompt": "Hello world! Please respond with a short text.",
-    "temperature": 1.0
+  "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+  "prompt":  "Hello, world! bla bla bla",
+  "max_tokens": 50
 }

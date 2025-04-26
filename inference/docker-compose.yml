@@ -1,0 +1,58 @@
+services:
+
+  vllm-api:
+    build: ./vllm
+    container_name: vllm-api
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      replicas: 1
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    ports:
+      - "8000"
+      - "9464"
+    networks:
+      - llm-net
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - llm-net
+
+  grafana:
+    image: grafana/grafana-oss:11.0.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - llm-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - vllm-api
+    networks:
+      - llm-net
+
+networks:
+  llm-net:
+    driver: bridge
