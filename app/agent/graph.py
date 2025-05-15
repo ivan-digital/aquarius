@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
 
 from app.agent.facade import ToolsFacade
+from app.agent.mcp.github_server import get_github_mcp_tools
 from app.agent.nodes import Nodes
 from app.agent.state import State
 from app.config_manager import configManager
@@ -27,26 +28,16 @@ def build_langgraph(facade: ToolsFacade) -> StateGraph:
     llm = ChatOllama(model=model_name)
     nodes = Nodes(llm, facade)
     logger.debug("Nodes initialized: %s", nodes)
-
-    # Create React agents for search and code
-    react_search = create_react_agent(
-        model=llm,
-        tools=facade.search_tools,
-        checkpointer=MemorySaver(),
-        name="react_search",
-        debug=True,
+    
+    mcp_tools = get_github_mcp_tools()
+    react_mcp = create_react_agent(
+        model = llm,
+        tools = mcp_tools,
+        checkpointer = MemorySaver(),
+        name = "react_mcp",
+        debug = True,
     )
-    logger.debug("Created react_search agent with tools: %s", facade.search_tools)
-
-    react_code = create_react_agent(
-        model=llm,
-        tools=facade.code_tools,
-        checkpointer=MemorySaver(),
-        name="react_code",
-        debug=True,
-    )
-    logger.debug("Created react_code agent with tools: %s", facade.code_tools)
-
+    logger.debug("Created react_mcp agent with %d MCP tools", len(mcp_tools))
     # Build the state graph
     gb = StateGraph(State)
     logger.debug("StateGraph instance created")
@@ -56,8 +47,7 @@ def build_langgraph(facade: ToolsFacade) -> StateGraph:
         ("chatbot", nodes.chatbot_node),
         ("profile_node", nodes.profile_node),
         ("clarify", nodes.human_node),
-        ("react_search", react_search),
-        ("react_code", react_code),
+        ("react_mcp", react_mcp),
         ("time", nodes.time_node),
         ("end", nodes.end_node_fn)
     ]:
@@ -76,8 +66,7 @@ def build_langgraph(facade: ToolsFacade) -> StateGraph:
             return "end"
         intent = nodes.detect_intent(last.content.strip())
         mapping = {
-            "search": "react_search",
-            "code": "react_code",
+            "search": "react_mcp",
             "chit_chat": "chatbot",
             "profile": "profile_node",
             "time": "time"
@@ -99,8 +88,7 @@ def build_langgraph(facade: ToolsFacade) -> StateGraph:
         "chatbot",
         "profile_node",
         "clarify",
-        "react_search",
-        "react_code",
+        "react_mcp",
         "time",
         "end"
     ]:

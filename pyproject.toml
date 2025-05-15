@@ -7,15 +7,14 @@ readme = "README.md"
 packages = [
   { include = "app" }
 ]
+include = ["config.yaml"]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
-beautifulsoup4 = "^4.4.0"
-gradio = "^5.11.0"
+python = ">=3.11,<3.13"
+gradio = "^5.29.0"
 praw = "7.8.1"
 html2text = "2024.2.26"
 ollama = "0.4.7"
-selenium = "4.29.0"
 text-generation = "^0.7.0"
 requests = "^2.32.3"
 dspy = "^2.5.43"
@@ -25,13 +24,13 @@ pydantic = ">=2.7.4,<3.0.0"
 flask-cors = "5.0.1"
 langchain = "^0.3.20"
 beautifulsoup4 = "^4.13.3"
-html2text = "^2024.2.26"
 selenium = "^4.30.0"
-praw = "^7.8.1"
 langchain-community = "^0.3.20"
 langchain-ollama = "^0.3.2"
+langgraph = "^0.4.1"
+langchain-mcp-adapters = "^0.0.9"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.2"
 pytest-cov = "^4.1.0"
 pytest-mock = "^3.12.0"

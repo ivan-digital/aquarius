@@ -65,8 +65,15 @@ def github_search_enrich(input: SearchInput) -> Dict[str, Any]:
     """
     Calls the underlying GithubSearch.search_and_enrich function, returning a dictionary of results.
     """
-    logger.info("github_search_enrich called with query: %s", input.query)
-    result = GithubSearch.search_and_enrich(query=input.query)
+    logger.info("github_search_enrich called with query=%s",
+                input.query)
+    # build exactly the dict that search_and_enrich expects
+    payload = {
+        "query": input.query
+    }
+    # instantiate your service and pass the dict
+    service = GithubSearch()
+    result = service.search_and_enrich(payload)
     logger.info("github_search_enrich result count: %d repos", len(result.get('repos', [])) if isinstance(result, dict) else 0)
     return result
 

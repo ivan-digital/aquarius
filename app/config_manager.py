@@ -10,7 +10,7 @@ class ConfigManager:
       model_name: "your_model_name_here"
     """
 
-    def __init__(self, config_file="config.yaml"):
+    def __init__(self, config_file="/config.yaml"):
         self.config_file = config_file
         self.config = self._load_config()
 

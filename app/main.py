@@ -1,7 +1,7 @@
 # main.py
-import threading
 from app.server.routes import app
 from app.ui import AquariusUI
+from multiprocessing import Process
 
 
 def start_api():
@@ -9,9 +9,9 @@ def start_api():
 
 
 def main():
-    api_thread = threading.Thread(target=start_api)
-    api_thread.daemon = True
-    api_thread.start()
+    api_proc = Process(target=start_api)
+    api_proc.daemon = True
+    api_proc.start()
 
     AquariusUI.launch_ui()
 

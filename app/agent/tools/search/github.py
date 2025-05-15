@@ -115,9 +115,19 @@ class GithubSearch:
         enriched_repo["readme"] = readme
         return enriched_repo
 
-    def search_and_enrich(self, query):
-        repos = self.search_repositories(query, per_page=10, page=1)
-        enriched_repos = []
-        for repo in repos:
-            enriched_repos.append(self.enrich_repository(repo))
-        return flatten_enriched_repos_to_string(enriched_repos)
+    def search_and_enrich(self, input):
+        """
+            Tool entry point: expects input dict with:
+               - 'query' (str)
+               - optional 'per_page' (int)
+              - optional 'page' (int)
+        """
+
+        query = input.get("query")
+        per_page = input.get("per_page", 10)
+        page = input.get("page", 1)
+
+        repos = self.search_repositories(query=query, per_page=per_page, page=page)
+        enriched = [self.enrich_repository(r) for r in repos]
+
+        return flatten_enriched_repos_to_string(enriched)

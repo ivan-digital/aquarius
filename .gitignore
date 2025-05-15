@@ -3,3 +3,77 @@
 config.yaml
 /.venv
 /.idea
+/config.yaml
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+lib/
+lib64/
+parts/
+sdist/
+var/
+
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Poetry
+.poetry/
+
+# Dependency caches
+pip-wheel-metadata/
+
+# Pytest cache
+.pytest_cache/
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*,cover
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+poetry.lock
