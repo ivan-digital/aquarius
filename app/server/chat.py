@@ -29,16 +29,32 @@ class ChatService:
         return serialized
 
     def process_message(self, user_id: str, message: str):
+        # Rebuild the graph to pick up any stubs or updated configurations
+        self.graph = build_langgraph(self.tools_facade)
         input_data = {"messages": [HumanMessage(content=message)]}
         config = {"configurable": {"thread_id": user_id}}
+        # Execute the graph, fallback gracefully on recursion errors
+        try:
+            final_state = self.graph.invoke(input_data, config=config)
+        except Exception as e:
+            from langgraph.errors import GraphRecursionError
+            if isinstance(e, GraphRecursionError):
+                fallback = "I am not equipped to handle this task with the functions at my disposal."
+                history = [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": fallback}
+                ]
+                return fallback, history
+            raise
 
-        final_state = self.graph.invoke(input_data, config=config)
+        # Process messages from final graph state
         all_messages = final_state["messages"] or []
 
-        # Find the last assistant message
-        assistant_msgs = [m for m in all_messages if isinstance(m, AIMessage)]
-        if assistant_msgs:
-            reply = assistant_msgs[-1].content
+        # Find the last assistant message, excluding end-node marker
+        end_marker = "(Conversation ended.)"
+        meaningful_msgs = [m for m in all_messages if isinstance(m, AIMessage) and m.content != end_marker]
+        if meaningful_msgs:
+            reply = meaningful_msgs[-1].content
         else:
             reply = "No assistant response found."
 

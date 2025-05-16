@@ -18,6 +18,10 @@ def get_github_mcp_tools():
     the list of loaded tools for use in a react agent.
     """
     github_token = configManager.config.get("github_token")
+    if not github_token:
+        logger.error("GitHub token is not set in configManager.config['github_token']")
+        raise RuntimeError("Missing GitHub token for MCP server initialization")
+
     mcp_servers = {
         "github": {
             "transport": "stdio",
@@ -33,14 +37,22 @@ def get_github_mcp_tools():
             },
         }
     }
+    logger.debug("GitHub MCP server configuration: %s", mcp_servers)
 
     async def _fetch():
+        logger.debug("Starting async fetch of GitHub MCP tools")
         async with MultiServerMCPClient(mcp_servers) as client:
+            logger.debug("MultiServerMCPClient started, fetching tools...")
             return client.get_tools()
 
     loop = asyncio.new_event_loop()
     try:
+        logger.debug("Running event loop %s to fetch GitHub MCP tools", loop)
         tools = loop.run_until_complete(_fetch())
+        logger.debug("Fetched GitHub MCP tools: %s", tools)
+    except Exception as e:
+        logger.error("Error initializing GitHub MCP server or fetching tools: %s", e)
+        raise
     finally:
         loop.close()
 

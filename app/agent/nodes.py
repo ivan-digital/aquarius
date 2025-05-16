@@ -6,15 +6,21 @@ from langgraph.prebuilt import ToolNode
 
 from app.agent.prompts import INTENT_PROMPT, generate_system_prompt
 from app.agent.state import State
+from app.config_manager import configManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class Nodes():
-    def __init__(self, model, facade):
+    def __init__(self, model, facade=None):
         self.model = model
-        self.search_node = ToolNode(tools=facade.search_tools)
-        self.code_node = ToolNode(tools=facade.code_tools)
+        # Initialize tool nodes only if a facade is provided
+        if facade is not None:
+            self.search_node = ToolNode(tools=facade.search_tools)
+            self.code_node = ToolNode(tools=facade.code_tools)
+        else:
+            self.search_node = None
+            self.code_node = None
         logger.info("Initialized Nodes with model %s and facade %s", model, facade)
 
 
@@ -40,19 +46,21 @@ class Nodes():
         return {"messages": [response]}
 
     def detect_intent(self, text: str) -> str:
-        messages = [
-            SystemMessage(content=INTENT_PROMPT),
-            HumanMessage(content=f"User message: {text}")
-        ]
-        reply = self.model.invoke(messages)
-        raw = reply.content.strip()
-        try:
-            intent = json.loads(raw).get("intent", "other")
-            logger.info("Parsed intent: %s", intent)
-            return intent
-        except Exception as e:
-            logger.error("Failed to parse intent JSON: %s", e)
-            return "other"
+        """Detect user intent based on keywords defined in config.yaml."""
+        text_lower = text.lower()
+        
+        configured_intents = configManager.config.get("agent_intents", {})
+        logger.debug(f"Detecting intent for: '{text_lower}'. Configured intents: {configured_intents}")
+
+        for intent_name, intent_config in configured_intents.items():
+            keywords = intent_config.get("keywords", [])
+            if any(kw in text_lower for kw in keywords):
+                logger.info(f"Detected intent '{intent_name}' for text: '{text}' based on keywords: {keywords}")
+                return intent_name # Return the matched intent name (e.g., "github_research")
+        
+        fallback_intent = configManager.config.get("fallback_intent_name", "needs_clarification")
+        logger.info(f"No specific intent detected for text: '{text}'. Defaulting to intent name '{fallback_intent}'.")
+        return fallback_intent
 
     def human_node(self, state: State) -> dict:
         last_msg = state["messages"][-1]

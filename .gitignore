@@ -77,3 +77,4 @@ Desktop.ini
 # Logs
 *.log
 poetry.lock
+poetry.toml
