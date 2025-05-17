@@ -1,6 +1,13 @@
 import logging
 from langchain_ollama import ChatOllama
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    MessagesPlaceholder,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
+from langchain_core.tools import render_text_description # Added import
 from langgraph.prebuilt.chat_agent_executor import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
@@ -15,9 +22,12 @@ from app.config_manager import configManager
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    force=True
 )
+logging.getLogger("langchain").setLevel(logging.DEBUG)
+logging.getLogger("langgraph").setLevel(logging.DEBUG)
 
 def build_langgraph(facade: ToolsFacade = None) -> StateGraph:
     logger.debug("Starting build_langgraph with ToolsFacade: %s", facade)
@@ -32,48 +42,92 @@ def build_langgraph(facade: ToolsFacade = None) -> StateGraph:
     nodes = Nodes(llm, facade)
     logger.debug("Nodes initialized: %s", nodes)
     
-    mcp_tools = get_github_mcp_tools()
-    # Custom prompt to instruct the agent on how to summarize GitHub repos
-    mcp_prompt = (
-        "You are a GitHub assistant with access to GitHub MCP tools. "
-        "When the user asks for a summary of a repository in the form 'Provide a summary of owner/repo', "
-        "you MUST call the get_file_contents tool with the repository owner, repo name, and path 'README.md'. "
-        "After fetching the README content, provide a concise summary of that content. "
-        "For other GitHub requests, use the appropriate MCP tools."
+    all_mcp_tools = get_github_mcp_tools()
+    mcp_tools = [tool for tool in all_mcp_tools if tool.name == 'get_file_contents']
+    if not mcp_tools: 
+        logger.error("Critical: 'get_file_contents' tool not found in MCP tools. Aborting react_mcp setup.")
+    logger.info(f"Filtered MCP Tools provided to create_react_agent: {mcp_tools}") # Modified by Copilot
+    
+    # System message part of the prompt
+    system_prompt_template_str = '''You are a helpful AI assistant with specialized tools for GitHub. Your primary goal is to assist users with GitHub-related tasks.\\\\n
+When the user asks for a summary of a repository, for example: \'Provide a summary of owner/repo\', 
+you MUST use the tool named \'get_file_contents\'. 
+To use this tool, you need to provide the parameters: \'owner\', \'repo\', and \'path\'. 
+For a repository summary, the \'path\' should always be \'README.md\'. 
+After successfully calling the \'get_file_contents\' tool and receiving the content of README.md, 
+you should then provide a concise summary of that content as your answer.\n
+For other GitHub-related requests, analyze the request and use the most appropriate GitHub MCP tool available to you.\\\\n\\\\n
+TOOLS:\n
+------\n
+{tools}\n\n
+When you need to use a tool, you MUST respond *only* in the following format, stopping after Action Input. Do not add any other text or explanation:\n
+```\n
+Thought: Do I need to use a tool? Yes\n
+Action: The action to take. Must be one of [{tool_names}]\n
+Action Input: The input to the action. This MUST be a single-line JSON string that conforms to the tool\'s arguments schema. For example: {{{{"owner": "user", "repo": "name", "path": "file.md"}}}}\n
+```\n
+The system will then execute the tool and provide you with an Observation.\n\n
+When you have a response to say to the Human, or if you do not need to use a tool (e.g., after receiving an Observation and being ready to answer), you MUST use the format:\n
+```\n
+Thought: Do I need to use a tool? No\n
+Final Answer: [your response here]\n
+```\n\n
+Begin!'''
+
+    # Manually format the system prompt string with tool descriptions
+    rendered_tools_description = render_text_description(mcp_tools)
+    tool_names_list = ", ".join([tool.name for tool in mcp_tools])
+
+    formatted_system_prompt = system_prompt_template_str.format(
+        tools=rendered_tools_description,
+        tool_names=tool_names_list
     )
+
+    prompt = ChatPromptTemplate.from_messages([
+        SystemMessagePromptTemplate.from_template(formatted_system_prompt), # Use pre-formatted string
+        MessagesPlaceholder(variable_name="messages"),
+    ])
+    logger.debug(f"Prompt input variables: {prompt.input_variables}")
+
     react_mcp = create_react_agent(
         model = llm,
         tools = mcp_tools,
-        prompt = mcp_prompt,
+        prompt = prompt,  
         checkpointer = MemorySaver(),
         name = "react_mcp",
         debug = True,
     )
-    # Ensure react_mcp is callable; wrap stubs returning non-callable
-    if not callable(react_mcp):
-        logger.debug("react_mcp agent is not callable, wrapping into dummy handler")
-        def _dummy_react_mcp(state):
-            return {"messages": []}
-        react_mcp = _dummy_react_mcp
-    # Wrap react_mcp to ensure it returns an AIMessage when no messages are produced
+    logger.debug(f"Value returned by create_react_agent: {react_mcp}")
+    logger.debug(f"Type of value returned by create_react_agent: {type(react_mcp)}")
     from langchain_core.messages import AIMessage
     orig_react_mcp = react_mcp
+    
     def react_mcp_wrapped(*args, **kwargs) -> dict:
-        # Attempt to call stub or real react_mcp with state and optional config
+        logger.debug(f"Entering react_mcp_wrapped with args: {args}, kwargs: {kwargs}")
+        current_state_dict: dict = args[0] 
+        invoke_config = kwargs.get("config", {}) 
+
+        agent_input = {"messages": current_state_dict["messages"]} 
+        logger.debug(f"Invoking orig_react_mcp (CompiledStateGraph) with input: {agent_input} and config: {invoke_config}")
+
         try:
-            result = orig_react_mcp(*args, **kwargs)
-        except TypeError:
-            # Try calling with state and config signature
-            state = args[0] if len(args) > 0 else None
-            config = args[1] if len(args) > 1 else {}
-            result = orig_react_mcp(state, config)
-        # Ensure any node failure still results in an AIMessage
-        messages = result.get("messages", []) or []
-        if not messages:
+            result = orig_react_mcp.invoke(agent_input, config=invoke_config)
+            logger.debug(f"orig_react_mcp (CompiledStateGraph) returned: {result}")
+        except Exception as e:
+            logger.error(f"Exception in orig_react_mcp.invoke call: {e}", exc_info=True)
             return {
-                "messages": [AIMessage(content="I am not equipped to handle this task with the functions at my disposal.")],
-                "state_updates": {}
+                "messages": [AIMessage(content=f"Error processing request in react_mcp: {e}")]
             }
+
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+        if not messages:
+            logger.warning("No messages returned from orig_react_mcp.invoke. Result was: %s. Returning fallback message.", result)
+            return {
+                "messages": [AIMessage(content="I am not equipped to handle this task with the functions at my disposal.")]
+            }
+        
+        logger.debug(f"react_mcp_wrapped returning result: {result}")
+        # The result from the sub-graph should be a dict compatible with the main graph's State update
         return result
     react_mcp = react_mcp_wrapped
     logger.debug("Created react_mcp agent with %d MCP tools", len(mcp_tools))
@@ -93,7 +147,6 @@ def build_langgraph(facade: ToolsFacade = None) -> StateGraph:
         gb.add_node(node_name, handler)
         logger.debug("Added node '%s' with handler %s", node_name, handler)
 
-    # Routing function with detailed logging
     def intent_router(state: State) -> str:
         last = state["messages"][-1]
 
