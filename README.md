@@ -47,11 +47,6 @@ The project uses unit tests with mocking to ensure code quality while maintainin
 # Run all unit tests (default)
 poetry run pytest
 
-# Run specific test categories
-poetry run pytest -m unit
-poetry run pytest -m slow
-poetry run pytest -m llm
-
 # Run specific test files or patterns
 poetry run pytest tests/unit/agent/test_facade.py
 poetry run pytest "tests/unit/**/test_*.py"
