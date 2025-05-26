@@ -1,9 +1,5 @@
-/app/server/uploaded_files/
-/app/server/work_dir/
-config.yaml
+keys.yaml
 /.venv
-/.idea
-/config.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -53,9 +49,6 @@ coverage.xml
 # Mypy
 .mypy_cache/
 .dmypy.json
-
-# Jupyter Notebook
-.ipynb_checkpoints/
 
 # IDEs
 .vscode/

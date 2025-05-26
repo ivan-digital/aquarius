@@ -92,3 +92,25 @@ class ArxivSearch:
                 break
 
         return results
+
+
+# Expose a tool named 'search_arxiv' for the LangGraph agent
+
+def search_arxiv(query: str, max_results: int = 5) -> str:
+    """
+    Search arXiv for papers matching the query and return Markdown-formatted results.
+    """
+    results = ArxivSearch.search(query)
+    return format_results_as_markdown(results)
+
+# Attach a name attribute for tool discovery
+search_arxiv.name = "search_arxiv"
+search_arxiv.description = "Search arXiv for papers matching the query and return Markdown-formatted results."
+search_arxiv.args_schema = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string"},
+        "max_results": {"type": "integer", "default": 5}
+    },
+    "required": ["query"]
+}

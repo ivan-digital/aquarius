@@ -1,26 +1,21 @@
-# Agent Intent Configuration
-agent_intents:
-  github_research:
-    keywords: ["github", "repo", "repository", "code", "branch", "commit", "pull request", "issue", "summary"]
-  web_search:
-    keywords: ["search", "find", "what is", "who is", "look up"]
-  arxiv_search:
-    keywords: ["arxiv", "paper", "research", "study", "article"]
-  terminal_command:
-    keywords: ["run", "execute", "terminal", "command", "shell"]
+# Configuration for simplified GitHub-focused agent
 
-# Intent to Node Mapping
-intent_to_node_mapping:
-  github_research: "react_mcp"
-  web_search: "search_node" 
-  arxiv_search: "react_mcp"
-  terminal_command: "react_mcp"
-  # chit_chat: "chatbot_node"
-  # profile: "profile_node"
-  # time: "time_node"
+# LLM Configuration
+llm_base_url: "http://localhost:11434"
+llm_model: "qwen3:32b"
 
-fallback_intent_name: "needs_clarification"
-fallback_node_name: "clarify"
-
-llm_base_url: "http://host.docker.internal:11434"
-# llm_model: "llama3" # Optional: uncomment and set if you use a different default model
+# GitHub MCP Server Configuration  
+github_server:
+  enabled: true
+  timeout: 90  # MCP initialization timeout in seconds
+  
+# Timeout Configuration
+timeouts:
+  mcp_init: 90        # MCP client initialization timeout
+  mcp_cleanup: 20     # MCP cleanup timeout
+  api_request: 300    # API request timeout for integration tests
+  llm_request: 300    # LLM request timeout
+  
+# Debug Configuration
+debug_mode: false
+test_mode: false

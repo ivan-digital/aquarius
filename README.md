@@ -1,102 +1,77 @@
 # Aquarius
 
-Aquarius is an intelligent code assistant that combines a chat interface with local LLM inference to help you explore, document, and interact with Python code repositories. It provides flexible search and code execution tools.
+Aquarius is a GitHub-focused AI assistant using a LangGraph ReAct agent, Ollama LLM backend, and Gradio interface for natural language GitHub repository exploration.
 
----
+## Quickstart
 
-## Features
+### 1. Environment Setup
 
-- **Agent-Based Architecture**  
-  Utilizes a LangGraph state machine to manage conversation flow.
+To install all required dependencies (chromedriver, Poetry, Ollama, and models), run:
 
-- **Intent Routing**  
-  Classifies user queries into `search`, `code`, or `chit_chat` and routes them accordingly.
-
-- **Integrated Tools**  
-  Provides built-in tools:
-  - `redditSearcher` for Reddit queries
-  - `googleSearcher` for Google Custom Search
-  - `arxivSearch` for academic papers
-  - `githubSearchEnrich` for GitHub repository insights
-  - `executePython` for sandboxed Python code execution
-
-- **Memory & Context**  
-  Employs a MemorySaver checkpointer to maintain conversational history and state.
-
-- **Flask API & Gradio UI**  
-  Enables chat via a RESTful `/chat` endpoint and an interactive Gradio interface.
-  In this repo I include [LLM inference docker container](inference/README.md) with vLLM, prometheus and grafana.
-
----
-
-## Project Structure
-
-```
-aquarius/
-├── app/
-│   ├── agent/                # Agent logic, tools and nodes
-│   ├── server/               # Flask routes and file processor
-│   ├── ui.py                 # Gradio chat UI integration
-│   └── config_manager.py     # YAML configuration loader
-├── main.py                   # Entry point (API + UI)
-├── pyproject.toml            # Poetry project file
-├── config.yaml               # LLM and API keys configuration
-└── README.md
+```sh
+./setup_env.sh
 ```
 
----
+This script will:
 
-## Requirements
+- Install Homebrew (if missing)
+- Install chromedriver (for Selenium tests)
+- Install Poetry (for Python dependency management)
+- Install all Python dependencies
+- Install Ollama (for LLM backend)
+- Download required Ollama models (`qwen3:8b`, `qwen3:32b`)
 
-- Python **3.11**
-- [Poetry](https://python-poetry.org/) for dependency management
-- A running Ollama LLM instance (configured in `config.yaml`)
-- API credentials for search tools (Google, GitHub, Reddit) if you plan to use external searches
+See `docs/requirements.md` for more details.
 
----
+### 2. Running the Application
 
-## Installation & Setup
+To start the main application locally:
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/ivan-digital/aquarius.git
-   cd aquarius
-   ```
-2. **Install dependencies**
-   ```bash
-   poetry install
-   ```
-3. **Configure**  
-   Create `config.yaml` and fill in your:
-   - `model_name` &rarr; Ollama model ID
-   - `google_key`, `google_cx` &rarr; Google Custom Search credentials
-   - `github_token` &rarr; GitHub API token
-   - `reddit_secret` &rarr; Reddit API client secret
-   - Optional: `browser` for Selenium WebDriver
-
----
-
-## Running the Application
-
-Start both the API and UI together:
-
-```bash
-poetry run python main.py
+```sh
+poetry run python app/main.py
 ```
 
-- **Flask API** on `http://127.0.0.1:5000`
-- **Gradio UI** served at `0.0.0.0:7860` (default)
+Or with Docker:
 
+```sh
+docker-compose -f docker-compose.app.yml up --build
+```
+
+### 3. Running Tests
+
+The project uses unit tests with mocking to ensure code quality while maintaining fast test execution.
+
+#### Running Unit Tests
+
+```sh
+# Run all unit tests (default)
+poetry run pytest
+
+# Run specific test categories
+poetry run pytest -m unit
+poetry run pytest -m slow
+poetry run pytest -m llm
+
+# Run specific test files or patterns
+poetry run pytest tests/unit/agent/test_facade.py
+poetry run pytest "tests/unit/**/test_*.py"
+
+# Run with verbose output
+poetry run pytest -v
+
+# See all available options
+poetry run pytest --help
+```
+
+This will run all the unit tests in the project. The tests are organized to mirror the project structure under `tests/unit/`.
+
+All tests use mocks instead of actual external services, making them:
+- Fast and reliable
+- Independent of external services
+- Suitable for CI/CD pipelines
+
+See `pytest.ini` for configuration details.
 
 ---
 
-## Contributing
-
-Contributions are welcome! Please fork the repo and submit pull requests for enhancements or bug fixes.
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
+For more information, see the `docs/` directory.

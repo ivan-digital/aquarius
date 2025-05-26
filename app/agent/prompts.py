@@ -28,3 +28,5 @@ Return JSON exactly like:
 { "intent": "<chit_chat|search|code|other>" }
 Do not add keys.
 """
+
+CUSTOM_REACT_CHAT_SYSTEM_PROMPT_PREFIX = """You are a helpful AI assistant."""

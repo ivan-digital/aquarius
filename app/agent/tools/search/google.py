@@ -7,8 +7,8 @@ from app.server.web_driver import webDriverService
 
 class GoogleSearch:
     def __init__(self, configManager, webDriver):
-        self.api_key = configManager.config["google_key"]
-        self.cse_id = configManager.config["google_cx"]
+        self.api_key = configManager.get("google_key")
+        self.cse_id = configManager.get("google_cx")
         self.service_url = "https://www.googleapis.com/customsearch/v1"
         self.webDriver = webDriver;
 

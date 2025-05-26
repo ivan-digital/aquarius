@@ -14,7 +14,7 @@ python = ">=3.11,<3.13"
 gradio = "^5.29.0"
 praw = "7.8.1"
 html2text = "2024.2.26"
-ollama = "0.4.7"
+ollama = "^0.4.8"
 text-generation = "^0.7.0"
 requests = "^2.32.3"
 dspy = "^2.5.43"
@@ -25,16 +25,25 @@ flask-cors = "5.0.1"
 langchain = "^0.3.20"
 beautifulsoup4 = "^4.13.3"
 selenium = "^4.30.0"
+webdriver-manager = "^4.0.1"
 langchain-community = "^0.3.20"
-langchain-ollama = "^0.3.2"
+langchain-ollama = "^0.3.3"
 langgraph = "^0.4.1"
 langchain-mcp-adapters = "^0.0.9"
+arxiv = "^2.1.0"
+python-multipart = "^0.0.20"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2"
 pytest-cov = "^4.1.0"
 pytest-mock = "^3.12.0"
-chromedriver-autoinstaller = "^0.5.4"
+chromedriver-autoinstaller = "^0.6.2"
+pytest-asyncio = "^0.21.1"
+pytest-docker = "^3.2.1"
+pytest-xdist = "^3.6.1"
+Flask = {extras = ["test"], version = "^2.2.2"}
+testcontainers = {extras = ["selenium"], version = "^4.10.0"}
+docker = "^7.1.0"
 
 [tool.poetry.scripts]
 aquarius = "app.main:main"
@@ -42,4 +51,4 @@ aquarius = "app.main:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=services --cov=app --cov-report=term-missing"
+addopts = "-v"

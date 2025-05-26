@@ -1,0 +1,31 @@
+# Dockerfile.base
+# Base image with Python and Poetry pre-installed
+
+FROM python:3.11-slim
+
+ARG POETRY_VERSION=1.8.2
+ENV PYTHONUNBUFFERED=1 \
+    POETRY_HOME=/opt/poetry \
+    POETRY_VERSION=${POETRY_VERSION}
+# Add Poetry's bin directory to PATH
+ENV PATH="${POETRY_HOME}/bin:${PATH}"
+
+# Install system dependencies including those for headless browser operation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential git xvfb wget gnupg ca-certificates chromium chromium-driver \
+    # Clean up apt cache to reduce image size
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+# The installer script will place poetry in $POETRY_HOME/bin
+RUN curl -sSL https://install.python-poetry.org | python3 - --version ${POETRY_VERSION} --yes
+
+# Create a symlink for convenience, making poetry globally accessible
+RUN ln -s "${POETRY_HOME}/bin/poetry" /usr/local/bin/poetry
+
+# Verify Poetry installation
+RUN poetry --version
+
+ENV CHROME_BIN=/usr/bin/chromium \
+    CHROME_PATH=/usr/bin/chromium \
+    CHROMEDRIVER_PATH=/usr/bin/chromedriver

@@ -43,13 +43,14 @@ def execute_terminal_command(command: str) -> Tuple[str, str, int]:
 
     Returns:
         Tuple[str, str, int]: A tuple containing stdout, stderr, and the return code.
-                              If the command is not allowed, returns an error message in stderr
+                              If the command is not allowed, returns structured error info in stderr
                               and a non-zero return code.
     """
     if not is_command_allowed(command):
-        error_message = f"Error: Command '{command.split()[0] if command else ''}' is not allowed."
-        print(error_message)
-        return "", error_message, -1 # Indicate command not allowed
+        command_name = command.split()[0] if command else ''
+        error_info = f"COMMAND_NOT_ALLOWED|{command_name}|{command}"
+        print(f"Command not allowed: {command}")
+        return "", error_info, -1 # Indicate command not allowed
 
     try:
         # shlex.split is used to handle quoted arguments correctly
@@ -63,17 +64,28 @@ def execute_terminal_command(command: str) -> Tuple[str, str, int]:
         )
         return process.stdout, process.stderr, process.returncode
     except FileNotFoundError:
-        error_message = f"Error: Command not found: {args[0]}"
-        print(error_message)
-        return "", error_message, -2 # Indicate command not found
+        error_info = f"COMMAND_NOT_FOUND|{args[0]}|{command}"
+        print(f"Command not found: {args[0]}")
+        return "", error_info, -2 # Indicate command not found
     except subprocess.TimeoutExpired:
-        error_message = f"Error: Command '{command}' timed out after 30 seconds."
-        print(error_message)
-        return "", error_message, -3 # Indicate timeout
+        error_info = f"COMMAND_TIMEOUT|{command}|30"
+        print(f"Command timed out: {command}")
+        return "", error_info, -3 # Indicate timeout
     except Exception as e:
-        error_message = f"Error executing command '{command}': {e}"
-        print(error_message)
-        return "", error_message, -4 # Indicate other execution error
+        error_info = f"COMMAND_ERROR|{command}|{str(e)}"
+        print(f"Error executing command: {command} - {e}")
+        return "", error_info, -4 # Indicate other execution error
+
+# Attach metadata for tool discovery
+execute_terminal_command.name = "execute_terminal_command"
+execute_terminal_command.description = "Executes a shell command if allowed, returning stdout, stderr, and return code. Error info in stderr uses format: ERROR_TYPE|context|details"
+execute_terminal_command.args_schema = {
+    "type": "object",
+    "properties": {
+        "command": {"type": "string"}
+    },
+    "required": ["command"]
+}
 
 if __name__ == '__main__':
     # Example usage:

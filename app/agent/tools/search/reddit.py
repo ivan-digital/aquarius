@@ -1,5 +1,6 @@
 import praw
 import datetime
+import os
 
 from app.config_manager import configManager
 
@@ -73,13 +74,27 @@ class RedditSearch:
         return results
 
 
-redditSearcherService = RedditSearch(
-    client_id=configManager.config["reddit_secret"],
-    client_secret=configManager.config["reddit_secret"])
+# Conditionally initialize the RedditSearch service
+app_component = os.environ.get("APP_COMPONENT")
+redditSearcherService = None
+if app_component == "api":
+    reddit_app_id = configManager.get("reddit_app_id")
+    reddit_secret = configManager.get("reddit_secret")
+    if reddit_app_id and reddit_secret:
+        redditSearcherService = RedditSearch(
+            client_id=reddit_app_id,
+            client_secret=reddit_secret
+        )
+    else:
+        print("Reddit API credentials not found. Reddit search tool will not be available.")
+else:
+    print(f"Skipping RedditSearch initialization for APP_COMPONENT='{app_component}'.")
 
 
 def redditSearcher(query, subreddit="all"):
     """
     Search for posts on Reddit matching the query.
     """
-    return redditSearcherService.search(query, subreddit)
+    if redditSearcherService:
+        return redditSearcherService.search(query, subreddit)
+    return "Reddit search tool is not available in this component."

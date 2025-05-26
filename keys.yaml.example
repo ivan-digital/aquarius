@@ -9,3 +9,5 @@ reddit_secret: YOUR_REDDIT_SECRET_HERE    # Reddit API client secret
 reddit_app_id: YOUR_REDDIT_APP_ID_HERE  # Reddit API application ID
 
 langsmith_key: YOUR_LANGSMITH_API_KEY
+
+github_token: YOUR_GITHUB_TOKEN_HERE  # GitHub Personal Access Token
