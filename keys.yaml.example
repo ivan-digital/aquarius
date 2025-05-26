@@ -1,0 +1,11 @@
+# This is an example file for your secret keys. 
+# Rename this file to keys.yaml and fill in your actual API keys.
+# IMPORTANT: Add keys.yaml to your .gitignore file to prevent committing secrets!
+
+google_key: YOUR_GOOGLE_API_KEY_HERE # API Key for Google Custom Search
+google_cx: YOUR_GOOGLE_CX_ID_HERE     # Custom Search Engine ID
+
+reddit_secret: YOUR_REDDIT_SECRET_HERE    # Reddit API client secret
+reddit_app_id: YOUR_REDDIT_APP_ID_HERE  # Reddit API application ID
+
+langsmith_key: YOUR_LANGSMITH_API_KEY

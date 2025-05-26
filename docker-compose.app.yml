@@ -1,0 +1,168 @@
+version: "3.8"
+
+services:
+  api:
+    image: python:3.11-slim
+    container_name: aquarius-api-1 
+    tty: true
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./app:/app/app
+      - ./config.yaml:/app/config.yaml
+      - ./keys.yaml:/app/keys.yaml 
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./poetry.lock:/app/poetry.lock
+      - ./tests:/app/tests
+      - ./conftest.py:/app/conftest.py
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    env_file:
+      - .env 
+    environment:
+      PYTHONPATH: /app
+      POETRY_HOME: "/opt/poetry" 
+      POETRY_VERSION: "1.8.2"
+      GECKODRIVER_VERSION: "v0.34.0" 
+      APP_COMPONENT: "api"
+      PYTHONUNBUFFERED: "1"
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" # Add this line
+    command: |
+      sh -c '
+      set -x  # Enable execution tracing
+      echo "SCRIPT_START (api): Starting service setup..."
+      
+      echo "SCRIPT_PROGRESS (api): Removing existing /app/.venv if present..."
+      rm -rf /app/.venv
+      echo "SCRIPT_PROGRESS (api): /app/.venv removed."
+
+      # Install prerequisites and Docker CLI
+      apt-get update && apt-get install -y curl build-essential firefox-esr wget tar apt-transport-https ca-certificates gnupg lsb-release # MODIFIED
+      echo "SCRIPT_PROGRESS (api): Base apt-get packages installed."
+
+      echo "SCRIPT_PROGRESS (api): Setting up Docker GPG key and repository..." # ADDED BLOCK - START
+      mkdir -p /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+        $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      apt-get update
+      echo "SCRIPT_PROGRESS (api): Docker GPG key and repository setup complete."
+
+      echo "SCRIPT_PROGRESS (api): Installing Docker CLI..."
+      apt-get install -y docker-ce-cli # MODIFIED: Install Docker CLI
+      echo "SCRIPT_PROGRESS (api): Docker CLI installed." # ADDED BLOCK - END
+
+      echo "SCRIPT_PROGRESS (api): Installing geckodriver $GECKODRIVER_VERSION..." # ADDED BLOCK - START
+      GECKODRIVER_ARCH="linux-aarch64" # Assuming aarch64 based on typical M1/M2 Mac Docker environment for python:slim
+      wget "https://github.com/mozilla/geckodriver/releases/download/$$GECKODRIVER_VERSION/geckodriver-$$GECKODRIVER_VERSION-$$GECKODRIVER_ARCH.tar.gz" -O /tmp/geckodriver.tar.gz
+      # Ensure /usr/local/bin exists
+      mkdir -p /usr/local/bin
+      tar -C /usr/local/bin -xzf /tmp/geckodriver.tar.gz geckodriver # Specify the member to extract
+      rm /tmp/geckodriver.tar.gz
+      chmod +x /usr/local/bin/geckodriver
+      # Add /usr/local/bin to PATH
+      export PATH="/usr/local/bin:$$PATH"
+      echo "SCRIPT_PROGRESS (api): geckodriver installed to /usr/local/bin and PATH updated: $$PATH"
+      geckodriver --version # Verify geckodriver # ADDED BLOCK - END
+
+      echo "SCRIPT_PROGRESS (api): Installing Poetry to $$POETRY_HOME version $$POETRY_VERSION..."
+      # Corrected poetry installation: Install to a temporary location, then move to $POETRY_HOME
+      # The official installer does not directly support a target directory like -t for the main binary path
+      curl -sSL https://install.python-poetry.org | python3 - --version $$POETRY_VERSION --yes
+      # Default installation is to $HOME/.local/bin for the poetry executable
+      # We will ensure $POETRY_HOME/bin is in PATH and poetry is callable
+      mkdir -p "$$POETRY_HOME/bin"
+      # Attempt to move if it was installed to default $HOME/.local/bin, otherwise assume it might be in PATH
+      if [ -f "$$HOME/.local/bin/poetry" ]; then mv "$$HOME/.local/bin/poetry" "$$POETRY_HOME/bin/"; fi
+
+      export PATH="$$POETRY_HOME/bin:$$HOME/.local/bin:$$PATH"
+      echo "SCRIPT_PROGRESS (api): Poetry configured. PATH is: $$PATH"
+      
+      echo "SCRIPT_PROGRESS (api): Verifying poetry installation by checking version..."
+      "$$POETRY_HOME/bin/poetry" --version || poetry --version # Try with full path then system path
+
+      echo "SCRIPT_PROGRESS (api): Current directory: $(pwd)"
+      echo "SCRIPT_PROGRESS (api): Listing /app contents (pyproject.toml should be here):"
+      ls -la /app
+
+      echo "SCRIPT_PROGRESS (api): Attempting poetry install in /app..."
+      # Update lock file for Gradio, then install
+      "$POETRY_HOME/bin/poetry" lock --no-update || poetry lock --no-update
+      "$POETRY_HOME/bin/poetry" install --no-interaction --no-ansi --no-root || poetry install --no-interaction --no-ansi --no-root # MODIFIED
+      echo "SCRIPT_PROGRESS (api): Poetry install finished."
+
+      echo "SCRIPT_PROGRESS (api): Attempting to exec application..."
+      exec "$$POETRY_HOME/bin/poetry" run python -m app.main --component api --port 5001 || exec poetry run python -m app.main --component api --port 5001
+      '
+    networks:
+      - aquarius_network
+
+  ui:
+    image: python:3.11-slim
+    container_name: aquarius-ui-1
+    tty: true
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./app:/app/app
+      - ./config.yaml:/app/config.yaml
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./poetry.lock:/app/poetry.lock
+      - ./tests:/app/tests
+      - ./conftest.py:/app/conftest.py
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+      POETRY_HOME: "/opt/poetry"
+      POETRY_VERSION: "1.8.2"
+      GECKODRIVER_VERSION: "v0.34.0"
+      APP_COMPONENT: "ui"
+
+    command: |
+      sh -c '
+      set -x # Enable execution tracing
+      echo "SCRIPT_START (ui): Starting service setup..."
+
+      echo "SCRIPT_PROGRESS (ui): Removing existing /app/.venv if present..."
+      rm -rf /app/.venv
+      echo "SCRIPT_PROGRESS (ui): /app/.venv removed." # MODIFIED
+      
+      apt-get update && apt-get install -y curl build-essential wget tar
+      # firefox-esr and geckodriver are removed as they are not strictly needed for the UI service
+      echo "SCRIPT_PROGRESS (ui): apt-get packages (curl, build-essential, wget, tar) installed."
+
+      echo "SCRIPT_PROGRESS (ui): Installing Poetry to $$POETRY_HOME version $$POETRY_VERSION..."
+      curl -sSL https://install.python-poetry.org | python3 - --version $$POETRY_VERSION --yes
+      mkdir -p "$$POETRY_HOME/bin"
+      if [ -f "$$HOME/.local/bin/poetry" ]; then mv "$$HOME/.local/bin/poetry" "$$POETRY_HOME/bin/"; fi
+
+      export PATH="$$POETRY_HOME/bin:$$HOME/.local/bin:$$PATH"
+      echo "SCRIPT_PROGRESS (ui): Poetry configured. PATH is: $$PATH"
+
+      echo "SCRIPT_PROGRESS (ui): Verifying poetry installation by checking version..."
+      "$$POETRY_HOME/bin/poetry" --version || poetry --version
+
+      echo "SCRIPT_PROGRESS (ui): Current directory: $(pwd)"
+      echo "SCRIPT_PROGRESS (ui): Listing /app contents (pyproject.toml should be here):"
+      ls -la /app
+
+      echo "SCRIPT_PROGRESS (ui): Attempting poetry install in /app..."
+      # Update lock file for Gradio, then install
+      "$POETRY_HOME/bin/poetry" lock --no-update || poetry lock --no-update
+      "$POETRY_HOME/bin/poetry" install --no-interaction --no-ansi --no-root || poetry install --no-interaction --no-ansi --no-root # MODIFIED
+      echo "SCRIPT_PROGRESS (ui): Poetry install finished."
+
+      echo "SCRIPT_PROGRESS (ui): Attempting to exec application..."
+      exec "$$POETRY_HOME/bin/poetry" run python -m app.main --component ui --port 7860 --api_url http://api:5001/api/chat || exec poetry run python -m app.main --component ui --port 7860 --api_url http://api:5001/api/chat
+      '
+    depends_on:
+      - api
+    networks:
+      - aquarius_network
+
+networks:
+  aquarius_network:
+    driver: bridge
